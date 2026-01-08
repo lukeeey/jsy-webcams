@@ -1,0 +1,239 @@
+<!-- made by luke -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Webcam Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: #000;
+    height: 100vh;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+  }
+
+  .grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(auto-fit, minmax(0, 1fr));
+  width: 100vw;
+  height: 100vh;
+}
+
+
+  /* Tablet */
+  @media (max-width: 900px) {
+    .grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  /* Mobile */
+  @media (max-width: 600px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+ .cam {
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+  border: 1px solid #111;
+}
+
+
+  video, iframe, img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
+  }
+
+  @media (max-width: 600px) {
+  .cam {
+    aspect-ratio: 16 / 9;
+  }
+}
+
+
+  /* Fullscreen overlay */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: black;
+    z-index: 999;
+    display: none;
+  }
+
+  .overlay.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .overlay video,
+  .overlay iframe,
+  .overlay img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .overlay .close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    font-size: 32px;
+    color: white;
+    cursor: pointer;
+    z-index: 1000;
+    background: rgba(0,0,0,0.5);
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+</style>
+
+</head>
+
+<body>
+
+<div class="grid">
+
+  <div class="cam" onclick="expand(this)">
+    <video id="hls1" muted></video>
+  </div>
+
+  <div class="cam" onclick="expand(this)">
+    <video id="hls2" muted></video>
+  </div>
+
+  <div class="cam" onclick="expand(this)">
+  <img
+    data-retry
+    data-src="https://webcam.islands.insure:444/axis-cgi/mjpg/video.cgi?resolution=480x300&fps=30"
+    alt="Islands Insure Cam 1">
+</div>
+
+<div class="cam" onclick="expand(this)">
+  <img
+    data-retry
+    data-src="https://webcam.islands.insure/axis-cgi/mjpg/video.cgi?resolution=480x300&fps=30"
+    alt="Islands Insure Cam 2">
+</div>
+
+
+  <div class="cam" onclick="expand(this)">
+    <iframe
+      src="https://player.twitch.tv/?channel=elticojersey&parent=localhost"
+      allowfullscreen>
+    </iframe>
+  </div>
+
+</div>
+
+<!-- Fullscreen Overlay -->
+<div class="overlay" id="overlay">
+  <div class="close" onclick="closeOverlay()">✕</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+  const hlsStreams = [
+    { id: "hls1", url: "https://s10.ipcamlive.com/streams/0avdmnpapnu6mrx7c/stream.m3u8" },
+    { id: "hls2", url: "https://s46.ipcamlive.com/streams/2esfcpkod4jwqx7lu/stream.m3u8" }
+  ];
+
+  hlsStreams.forEach(({ id, url }) => {
+    const video = document.getElementById(id);
+    video.setAttribute("playsinline", "");
+    video.autoplay = true;
+    video.loop = true;
+
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = url;
+    } else if (Hls.isSupported()) {
+      const hls = new Hls({ lowLatencyMode: true });
+      hls.loadSource(url);
+      hls.attachMedia(video);
+    }
+  });
+
+  const overlay = document.getElementById("overlay");
+  let activeNode = null;
+  let originalParent = null;
+  let originalNextSibling = null;
+
+   function expand(el) {
+    if (activeNode) return;
+
+    activeNode = el.firstElementChild;
+    originalParent = activeNode.parentNode;
+    originalNextSibling = activeNode.nextSibling;
+
+    overlay.appendChild(activeNode);
+    overlay.classList.add("active");
+
+    // Resume HLS video if needed
+    if (activeNode.tagName === "VIDEO") {
+      activeNode.play().catch(() => {});
+    }
+  }
+
+  function closeOverlay() {
+    if (!activeNode) return;
+
+    overlay.classList.remove("active");
+
+    // Put element back exactly where it was
+    if (originalNextSibling) {
+      originalParent.insertBefore(activeNode, originalNextSibling);
+    } else {
+      originalParent.appendChild(activeNode);
+    }
+
+    activeNode = null;
+    originalParent = null;
+    originalNextSibling = null;
+  }
+</script>
+
+<script>
+  function setupRetryingImage(img, baseUrl, retryDelay = 3000) {
+    let retryTimer = null;
+    let loaded = false;
+
+    function load() {
+      if (loaded) return;
+      img.src = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
+    }
+
+    img.onload = () => {
+      loaded = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      console.log("MJPEG loaded:", baseUrl);
+    };
+
+    img.onerror = () => {
+      if (loaded) return;
+      console.warn("MJPEG failed, retrying:", baseUrl);
+      retryTimer = setTimeout(load, retryDelay);
+    };
+
+    load();
+  }
+
+  // Apply retry logic to Islands Insure streams
+  document.querySelectorAll("img[data-retry]").forEach(img => {
+    setupRetryingImage(img, img.dataset.src);
+  });
+</script>
+
+
+</body>
+</html>
